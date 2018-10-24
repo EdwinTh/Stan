@@ -1,0 +1,215 @@
+---
+title: "Stan Manual"
+author: "Edwin Thoen"
+date: "10/24/2018"
+output: html_document
+---
+
+## Ch1
+
+A Stan program defines a statistical model through a conditional probability function $P(\theta|y,x)$, where $\theta$ is not only parameters, but also latent variables, missing data and future predictions. 
+
+Variable types (both constrained and unconstrained): integer, scalar, vector and matrix types. Also arrays of other types. 
+
+Variables can be declared in five of the six blocks: data, transformed data, parameters, transformed parameters and generated quantity. The model block consists of statements defining the log probability for the model. 
+
+Variable constraints are very important. Any parameter values that satisfy the constraints declared for the parameters must have support in the model block 
+
+The order of statements matter, they are interpreted sequentially.
+
+Observed random variables are declared as data, unobserved are declared as parameters. 
+
+A Stan executable that is ran first reads in and validates the known values $y$ and $x$. Then it generates a sequence of of samples of $\theta$. From $P(\theta|y,x)$
+
+Scale reduction statistic $\hat{R}$: split the chain wihtout the burnout in half. Calculate the average within chanin variance and the between chain variance. If there is almost no between chain variance this statistic goes to 1. If result is not enough effective samples rerun with doubled number of iterations. 
+
+## Ch2
+
+We can include one file into another by using
+
+```{stan}
+#include other_filename.stan
+```
+
+Stan then behaves as if the entire file is specified at the place of the `#include`. The include can be anywhere in the file. Comments can be line based $//$ or bracketed $/* unitl */$.
+
+## Ch 3
+
+Every variable used in a Stan program must have a declared data type. Like C++ it is strongly typed. 
+
+There are two primitive types: real and int. There are three matrix-based types: vector (column vector), row_vector, an matrix.
+
+Any type can be made into an array by declaring array arguments. 
+`real x[10]` declares `x` to be a one-dimensional array. 
+`matrix[3, 3] m[6, 7]` declares `m` to be two-dimensional array of size 6 x 7 contaning a matrix of 3 x 3 on each of its 42 elements. 
+
+Declarations of variables other than local variables may be provided with constraints. They determine error checking in the transformed data, transformed parameter, ande generated quantities block. All data types can be given upper and lower bounds in this way:
+`int<lower = 1, upper = 100> N;`
+
+There are four constrained vector data types:
+`simplex` for unit simplexes (positive values that sum to 1)
+`unit_vector` for unit length vectors (vector with a norm of 1)
+`ordered` for ordered vectors
+`positive_ordered` for vectors of positive ordered scalars. 
+
+Specialize matrix data types:
+`corr_matrix` correlation matrix
+`cov_matrix` covariance matrix
+`cholesky_factor_cor` Cholesky factors of correlation matrices
+`cholesky_factor_cov` Cholesky factors of covariance matrices
+
+Constraints are critical for variables declared in the parameters block where they determine the transformation from constrained variables to unconstrained variables. 
+
+*The model must have support (non-zero density, equivalently finite log density) at every value of the parameters that meets their declared constraints.*
+
+The samplers might get completely stuck otherwise. 
+
+Stan is 32 bit, so be aware when using large integers. Integer division is rounded. For reals 64 bit floating points are used. 
+Stan automatically promotes integers to reals, but does not automatically demote reals to integers. 
+
+All variables used in a Stan program must have an explicitly declared data type. 
+
+Unconstrained integer:
+`int N;`
+
+Constrained integer (bounds are inclusive):
+`int<lower=1> N;`
+`int<lower=0,upper=1> n;`
+
+Unconstrained real:
+`real theta;`
+
+Constrained real:
+`rho<lower=-1,upper=1>;`
+
+Bounds for integers and reals may be arbitrary expressions. The only requirement is that the variable is declared earlier.
+
+```{stan}
+data {
+  real b;
+}
+parameters {
+  real<lower=b> theta;
+}
+```
+
+It may also be a more complex expression, however it should always be of the same data type as the variable it is subsetting.
+
+```{stan}
+data {
+  int N;
+  real y[N];
+}
+
+parameters {
+  real<lower=min(y),upper=max(y)> mu;
+}
+```
+
+
+Matrices(2d) and vectors(1d) are reals and are more constraint than arrays. The three are not assignable to each other, even if they have the same dimensions. 
+
+There are three situation where only matrices and vectors can be used:
+
+* matrix arithmetic
+* linear algebra functions
+* multivariate functions and outcomes
+
+Vectors and matrices cannot be typed to return integer values, they always return reals.
+
+Indexing starts at 1 in Stan, like in R and unlike python.
+
+Rows of a matrix can be indexed by indexing the left-hand side of an assignment statement.
+
+```{stan}
+matrix[M, B] a;
+row_vector[N] b;
+// ...
+a[1] = b;
+```
+
+Note that the index is for the rows and doesnt need a trailing comma. Assignment works by copying values, subsequent assigments to either a or b does not affect the other one. 
+
+For correlation and covariance matrices only one dimension needs to be provided, because they are squared. They may be assigned to 
+other matrices (even unconstrained ones), as long their dimensions match. 
+
+It can be more efficient to use Cholesky factors of correlation and covariance matrices. 
+
+All types with constraints may be assigned to other variables without constraints, as long as type and dimension match.
+
+We can declare variable sizes with expressions, but only if the expressions contain input from the data or the transformed data blocks, they should be known once the data is read. 
+
+Vectors and row vectors are indexed by an integer, matrices by two integers to retrieve a cell. When a matrix is indexed by a single integer the return is a row_vector. This means that X[2,3] and X[2][3] give the same result (former is more efficient).
+
+Size declared by expressions, as long as its return is an integer. 
+
+
+Arrays can be of any type, so they can even contain matrices and vectors. Arrays are the only way to store sequences of integers. A two dimensional array is an array of arrays. When multiple indices are provided thay are applied sequentially. Arrays are declared by enclosing the dimension in square brackets after the variable name. Arrays can have more than two dimensions.
+
+The following creates an array of length 3, each element containing a vector of lenght 7.
+
+```{stan}
+vector[7] mu[3];
+```
+
+Subarrays of arrays can be retrieved by indexing by fewer than the full number of dimensions. The result is than an array again. Subarrays can be assigned to other variables as long as the dimensions match. Subarrays can also be assigned (only a part of the total array is assigned then), by indexing the left-hand side of the assigment statement. This partial assignment also works for arrays of matrices, vectors and row vectors.
+
+Arrays, vectors, row vectors and matrices are not interchangeable. They cannot get assigned to one another, nor can they used as function arguments where the other is asked. 
+
+The size of an array is declared with integers, which cannot be parameters, transformed parameter or generated quantities. Just like vectors and matrices. 
+
+Sizes are not part of the data type, `real a[3];` declares it to be an array. Sizes are checked at run time, so cannot be checked at compilation. Errors of assignment of nonconformative matrix multiplication are only raised at run time. Also constraints are not part of the variable. 
+
+Stan allows assignable variables to be declared and defined in a single statement. Assignable variables are: local variables and variables declared in transformed data, transformed parameters generated quantities.
+
+## Ch4
+
+An expression is the basic syntactic unit in a Stan program that denotes a value. Types are determined statically (at compilation). The simplest forms are integer and real literals. Integers never contiain a dot, reals always. 
+
+Also variables are well-formed expressions. The name of the model cannot be used as a variable name. jos.stan would be called jos_model, so jos_model is not allowed within it. User defined function names cannot also be used as a variable name. There is a list of reserved names, Stan will throw an informative error at compilation.
+
+Arrays, vectors and matrices can be constructed via a sequence of expressions. Square brackets are used for vectors and matrices, curly brackets for arrays. `[ 1, 3 ];` produces a row vector that can be transposed using `'`.  Compound expressions and variable names are allowed. 
+
+A matrix uses double brackets: `matrix[2, 3] m1 = [ [1, 2], [3, 4], [5, 6] ]`. Row vector expressions can be used within a matrix. Empty expressions are not allowed.
+
+Arrays are constructed with curly braces `int a[3] = { 2, 3, 4 }`. Multiple dimension arrays use inner blocks of curly brackets. All stan data types are rectangular, so we cannot have inner array elements of different lengths. Again expressions cannot be empty. If an expression contains only integers, the array must be of type integer. 
+
+Parantheses (round brackets) are used for grouping. 
+
+For integer and real-valued expressions, basic binary arithmetic is supported: + - * /
+For integers there is the modulus: %
+
+For vectors and matrices the apostrophe is used as transpose: '
+The return type of matrix operations is he smallest type that can be statically guaranteed. 
+
+Elementwise matrix multiplication and division with: .* and ./
+
+Exponentiation is implemented for integers and reals, result is always real: ^
+
+See table on page 62 for precedence and associativity of operators. 
+
+I am not really sure but the ? : combination seems to work as ifelse() in R. It looks like:
+`a : b ? c`. Where `a` must be an integer. If it is nonzero it will evaluate to `b` otherwise to `c`. It is evaluated lazy, only the returned subexpression is evaluated. This can save a lot of time in the computation of the derivatives. 
+
+Also multiple indices can be used to subset a vector, array or matrix. 
+
+Stan provides built in mathematical and statistical function, called like an R function. Each function has determined its allowable types of its arguments and of its return. A function is uniquely determined by its name and its sequence of argument types. The following are different functions:
+
+```{stan}
+real mean(real[]);
+real mean(vector);
+```
+
+because they take different arguments (real 1d array and a vector). 
+
+Constants are nullary functions (functions without argumets) and are therefore called like `pi()`.
+
+For most of the distributions supported by Stan there is a corresponding random number generating function. Named by the distribution with suffix `_rng`. It can only be used in the transformed data and generated quantities blocks. They can also be used in udfs. This is helpful for posterior predictive checking. 
+
+Stan is strongly statically typed: implementation type of an expression can be resolved at compile time. Redeclaration of already declared variables is not allowed. 
+
+
+
+
+
+
